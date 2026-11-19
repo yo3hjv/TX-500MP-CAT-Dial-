@@ -7,8 +7,11 @@
 
 ---
 # NOTE: V.0.6.0 for beta testing with LINK500MP on Bluetooth connection.
+
 Do not connect PORT A directly to 5V I/O, only to 3V3!
+
 **To use it with wired connection to Lab599 TX-500 series transceivers, the CAT Dial must provide 3V3 TO THE RADIO!!!**
+
 The binary must be uploaded (flashed)  on M5 Dial V.1.1 from address 0x0000 
 
 
