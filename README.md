@@ -6,7 +6,7 @@
 **Document Date:** 19.11.2026 
 
 ---
-# NOTE: V.0.6.0 for beta testing with LINK500MP on Bluetooth connection.
+# NOTE: V.0.6.0 for beta testing with LINK500MP on Physical Serial connection.
 
 Do not connect PORT A directly to 5V I/O, only to 3V3!
 
