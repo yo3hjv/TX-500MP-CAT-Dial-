@@ -1,0 +1,357 @@
+================================================================================
+LAB-599 TX-500MP / MULTI-TRANSCEIVER CAT CONTROLLER - M5STACK DIAL
+CHANGELOG & VERSION HISTORY
+================================================================================
+Nota: Incrementarea numarului versiunii in firmware (FW_VERSION in CAT_Dial.ino)
+se realizeaza EXCLUSIV manual de catre utilizator.
+================================================================================
+
+[0.7.0] - 2026-11-22
+--------------------------------------------------------------------------------
+REMEDIERE CONEXIUNE HARDWARE UART TRX, CORECTIE NOMENCLATURA CAT SI ADAPTARE NIVELURI TTL PENTRU LINK-500MP:
+1. Clarificare Nomenclatura Port Serial TRX (Portul DATA/CAT pe Lab599 TX-500MP):
+   - Identificat comportamentul contraintuitiv al documentatiei si conectorului Lab599:
+     * Pinul etichetat "CAT TX" la conectorul TRX reprezinta de fapt INTRAREA de receptie UART a transceiverului (Radio RX <- Dial TX).
+     * Pinul etichetat "CAT RX" la conectorul TRX reprezinta de fapt IESIREA de transmisie UART a transceiverului (Radio TX -> Dial RX).
+   - Inversarea firelor a eliminat cuplajul parazit prin sursa de alimentare si a restabilit receptia curata a cadrelor UART.
+2. Adaptare Niveluri Electrice si Solutie Hardware in Link500MP (Bluetooth JDY-33):
+   - Desi izolatorul digital ADuM1201 din TX-500MP este alimentat la 3.3V (CAT 3V3), semnalele UART din modulul extern Link-500MP lucreaza la 5V.
+   - La conectarea in paralel a UART-ului M5Dial (3.3V) cu cel al modulului Link-500MP (5V), semnalul nu putea atinge pragul inferior de tensiune (V_IL) pentru nivelul logic LOW (blocat la ~1.5V).
+   - Solutie hardware aplicata: in Link500MP s-a inlocuit rezistenta serie cu CAT TX cu o dioda avand Anodul spre portul CAT TX din RADIO; iesirea TXData din JDY-33 se conecteaza la portul CAT TX.
+   - Nivelul logic LOW coboara acum ferm la 0V, asigurand fronturi TTL corecte si comunicatie bidirectionala impecabila atat prin cablu cat si prin BLE.
+3. Confirmare Functionare Bidirectionala Completa (Full-Duplex):
+   - Toti parametrii operationali (frecventa VFO A, mod de lucru, AF Gain, RF Gain, putere RF, Mic Gain, nivel si stare compresor) sunt cititi cu succes la pornire in 32-53 ms prin secventa secventiala de Boot Discovery.
+   - Activare Auto-Information (AI1;) pentru actualizare continua si sincronizare bidirectionala in timp real intre M5Dial si transceiver.
+
+[0.6.0] - 2026-11-19
+--------------------------------------------------------------------------------
+INTEGRARE BLE LINK-500 MP (MICROCHIP RN4678), SCRIPT MERGED BIN & DOCUMENTATIE COMPLETA:
+1. Suport BLE Transparent UART pentru Microchip RN4678 (Lab599 Link-500 MP):
+   - Integrat al 3-lea protocol GATT de fallback in ble_controller.cpp: serviciul proprietar
+     Microchip / ISSC Transparent UART (UUID: 49535343-FE7D-4AE5-8FA9-9FAFD205E455).
+   - Mapare caracteristici: TX / Scriere de la ESP32 spre modul (UUID: 49535343-8841-43F4-A8D4-ECBE34729BB3)
+     si RX / Receptie cu abonare automata la Notificari spre ESP32 (UUID: 49535343-1E4D-4BD9-BA61-23C647249616).
+   - Conectare directa fara autentificare ("Just Works" / No PIN challenge) compatibila cu profilul
+     implicit al modulului RN4678 din interfata oficiala wireless Lab599 Link-500 MP.
+2. Script de Fuziune Binare Arduino intr-un Singur Flashable BIN (make_merged_bin.bat):
+   - Creat script batch automatizat (in radacina proiectului si in folderul dedicat binaries/)
+     care apeleaza esptool.exe din pachetul ESP32 Arduino.
+   - Combina bootloader-ul (0x0000), tabela de partitii (0x8000) si firmware-ul compilat (0x10000)
+     intr-un singur fisier integrat CAT_Dial_FULL_MERGED.bin (8MB, DIO, 80MHz) flashabil de la adresa 0x0000.
+3. Suita Completa de Manuale si Documentatie Utilizator (docs/):
+   - Manual Romana (docs/Manual_Instructiuni.txt): Ghid practic complet structurat pe experienta
+     utilizatorului (Boot Discovery, ecrane swipe, acord dial, RIT, meniuri DSP si Setup).
+   - Manual Engleza Markdown (docs/User_manual_0.6.0.md): Ghid complet in format Markdown cu diagrame
+     ASCII, formule, tabele de referinta rapida si descriere detaliata a fiecarei comenzi.
+   - Sistem Documentation & README (README.md & docs/ReadMe_CAT Dial.txt): Actualizate complet la v0.6.0
+     cu specificatiile Port A (GPIO 13/15), protocolul NimBLE, timpii exacti si arhitectura modulara.
+   - Integrare precisa a temporizarilor din cod: 1 secunda pentru meniul DSP, 5 secunde pentru meniul
+     Setup, 2 secunde pentru resetarea Clarifier-ului la 0 Hz, 0.2s pentru schimbarea VFO-ului,
+     0.6s pentru Audio Mute si 5 apasari rapide in 0.5s pentru secventa de Power Off cu countdown de 8 secunde.
+   - Specificat explicit ca selectia decadei de acord se face exclusiv prin tastele tactile sageti ("<" si ">"),
+     iar bara orizontala de sub modelul statiei indica modul de conectare: Verde = Cablu Serial CAT,
+     Albastru = Bluetooth BLE.
+4. Corectii de Sintaxa si Compilare Driver CAT:
+   - Rezolvat erorile de compilare pentru constantele din tx500mp.cpp (TRX_PARAM_NB, TRX_PARAM_NR,
+     eliminat referintele la XIT).
+
+[0.5.0] - 2026-11-18
+--------------------------------------------------------------------------------
+IMPLEMENTARE STRICTA PROTOCOL LAB599 TX-500MP PENTRU COMENZILE OPERATIVE M5DIAL:
+1. Pastrare Transceiver Implicit pe Icom IC-7100:
+   - IC-7100 ramane selectat implicit la boot (g_current_trx_model = TRX_IC7100 @ 19200 bps).
+   - TX-500MP poate fi selectat oricand pentru teste din meniul Setup -> TRX (salvat in NVS).
+2. Implementare Stricta Comenzi Operative M5Dial (tx500mp.cpp):
+   - Implementat in tx500mp.cpp suita de metode necesare pentru controalele M5Dial si Boot Discovery:
+     FA/FB (frecvente VFO), MD (modulatie), FL (filtre), AG0 (audio gain), RG (RF gain 0..100),
+     PC (RF power), MG (mic gain), PR/PL (speech compressor on/off si nivel), RA (atenuator),
+     PA (preamplificator), GT (AGC), NB/NL (noise blanker), NR/RL (noise reduction), NT (notch),
+     SP (split), RT/XT/RC/RU/RD (clarifier RIT/XIT).
+3. Eliminare Totala CTCSS, Telemetrie si Comenzi Extra:
+   - Fara CTCSS: setCtcss() a fost complet neutralizata (nu trimite CT/CN).
+   - Fara Telemetrie: eliminate comenzile de interogare VL (tensiune), SM (S-meter), BY (busy), ID (model).
+   - Eliminat din processResponse() decodarea telemetriei (VL, SM, BY, ID, MA).
+   - Neutralizate functiile nefolosite de UI (keyer, carrier, IF shift, squelch, tune power, vox, monitor, tuner, lock).
+4. Corectii de Formatare Parametri conform Lab599 Protocol Oficial:
+   - Filtru (FL): modificat la 2 parametri ("FL%u0;") pentru filtre RX si TX (elimina eroarea rig-ului '?;').
+   - Atenuator (RA): modificat la 2 cifre ("RA%02u;" -> RA00; / RA01;).
+   - AGC (GT): modificat la 2 cifre ("GT%02u;" -> GT01; .. GT10;).
+   - RF Gain (RG): scalat strict in intervalul oficial 000..100.
+   - Interogare initiala AF Gain: corectat la "AG0;".
+
+[0.4.8] - 2026-11-18
+--------------------------------------------------------------------------------
+STREAMING TRANSPARENT BLE CAT (JDY-33 / HM-10 / NUS) & INTEGRARE BIDIRECTIONALA:
+1. Migrare Stiva BLE la NimBLE-Arduino (v2.5.2):
+   - Inlocuit stiva Bluedroid cu NimBLE-Arduino in ble_controller.cpp pentru eliminarea definitiva a erorii 'Stack canary watchpoint triggered (BTU_TASK)' la explorarea serviciilor GATT (getService).
+   - Redus consumul de memorie RAM cu ~50% si eliminat task-ul intern FreeRTOS BTU_TASK.
+   - Scanarea BLE opreste explicit inainte de conectare (ble_stop_scan / s_pBLEScan->stop()).
+2. Streaming Transparent BLE CAT peste GATT:
+   - Implementat auto-descoperirea serviciului serial GATT transparent 0xFFE0 (JDY-33 / HM-10) cu caracteristica de date 0xFFE1, avand fallback pe Nordic UART Service (NUS).
+   - Adaugat suport de transmitere ble_write(data, len) cu segmentare automata in pachete MTU de 20 octeti si pacing de 4 ms.
+   - Implementat ring-buffer de receptie (256 octeti) si abonare la notificari BLE (subscribe) prin ble_available(), ble_read() si ble_read_bytes().
+3. Punte Bidirectionala Hardware UART + BLE in cat_serial.cpp:
+   - Oglindite comenzile emise prin sendBinary() (CI-V) si sendAscii() (Kenwood / TX-500MP) simultan pe fir (Port A UART) si prin conexiunea radio BLE activa.
+   - Rutati octetii receptionati prin BLE direct in parserul de cadre CI-V (readCivFrame) si ASCII (readAsciiTelegram).
+
+[0.4.7] - 2026-11-18
+--------------------------------------------------------------------------------
+PORT A HARDWARE CAT, BOOT DISCOVERY DETERMINIST STOP-AND-WAIT & REMEDIERE PROTOCOL IC-7100:
+1. Migrare Hardware CAT pe Port A (Grove Red):
+   - Mutat Serial1 de pe Port B (GPIO 1 defect hardware) pe Port A: RX = GPIO 13, TX = GPIO 15.
+   - Autobuzul I2C intern M5Dial (touch FT3267, RTC BM8563) utilizeaza intern GPIO 11/12, Port A fiind 100% disponibil ca UART full/half-duplex.
+2. Sincronizare determinista Boot Discovery (dial_update.cpp):
+   - Implementat protocol Stop-and-Wait tranzactional cu bucla de flush activ cat_poll() si timeout per pas (350 ms).
+   - Toti cei 10 pasi de interogare raspund in 28-41 ms direct pe consola cu feedback vizual complet.
+   - Parametrizare completa a temporizarilor in setup.h (CAT_BOOT_INIT_SETTLE_MS, CAT_BOOT_QUERY_TIMEOUT_MS, CAT_BOOT_QUERY_GAP_MS).
+3. Corectie Inversare Filtre (IC-7100 / IC-7000):
+   - Corelat profilul CI-V in transceiver_cat.h: FIL 1 = WIDE, FIL 2 = MID, FIL 3 = NAR (sirul de etichete a fost aliniat: {"WIDE", "MID", "NAR", ""}).
+4. AGC Speed & Time Constant (0.1s .. 6.0s / OFF):
+   - Adaptat suportul pentru viteze AGC: SLOW, MID, FAST si OFF (0x16 0x12 0x00).
+   - Afisare temporizare in zecimi de secunda ("OFF" sau "0.1s" .. "6.0s") cu rezolutie de 0.1s in ecranul de setari AGC.
+5. Filtru Notch Redus la OFF si AUTO:
+   - Eliminat modul manual DEEP/FAST pentru Icom in setup.h si ui_views.cpp, comutand exclusiv intre NOTCH: OFF si NOTCH: AUTO (0x16 0x41).
+6. Remediere Reglaj Nivel NB & NR (DSP):
+   - Corectat codul CI-V pentru nivel NR in ic7100.cpp: modificat de la 0x14 0x16 (rezervat VOX) la codul oficial 0x14 0x06 (nivel 0000..0255).
+   - Introdus pacing anti-coliziune (35 ms) in ic7100.cpp la setNoiseBlanker si setNoiseReduction pentru a preveni coliziunea comenzii de nivel cu raspunsul ACK al comenzii de activare.
+   - Legat apelul cat_set_nb si cat_set_nr direct in functiile de reglaj din encoder (adjust_nb_setting, adjust_nr_setting).
+7. Suprimare Dezactivare Accidentala la Long Press (Meniu & Butoane):
+   - Separat evenimentul LV_EVENT_LONG_PRESSED de click-ul de eliberare (LV_EVENT_SHORT_CLICKED) pentru toate butoanele din meniu si ecranul Frequency, eliminand comutarea involuntara a starii NR/NB la intrarea in ecranul de reglaj.
+8. Corectie Clarifier (RIT / XIT):
+   - Inversat subcomenzile CI-V 0x21 0x00 si 0x21 0x01 in ic7100.cpp: 0x21 0x01 este starea ON/OFF (1 octet), iar 0x21 0x00 este frecventa de offset (3 octeti BCD + semn).
+   - Dezactivat XIT pentru IC-7100 in profilul hardware (hasXIT = false), ciclul clarificatorului comutand exclusiv intre OFF si RIT.
+9. Corectie Comanda Atenuator (ATT):
+   - Aliniat payload-ul comenzii 0x11 in ic7100.cpp la valoarea BCD oficiala IC-7100: 0x20 (20 dB ATT ON) si 0x00 (OFF).
+   - Eliminat decuplarea redundanta a preamplificatorului la activarea ATT in update_frontend_display(true) pentru a preveni coliziunea pe magistrala half-duplex.
+   - Adaugat suport pentru atingere scurta (short tap) pe ecranul RF Gain pentru comutare rapida ATT/PRE.
+10. Comanda Deconectare Bluetooth din Setup Menu:
+   - Adaugata optiunea 'BT DISCONNECT' la pozitia 1 in rollerul Setup (setup_elements_roller).
+   - Apasarea scurta a butonului apeleaza direct ble_disconnect() cu feedback acustic (beep confirmare/eroare), decaland transparent indicii celorlalte subpagini.
+11. Eliminare blocaj USB CDC (Deadlock fix pe ESP32-S3):
+   - Eliminat Serial.flush() apelat per-octet in cat_serial.cpp (cauza a inghetarii procesorului pe ecranul Splash cand monitorul PC nu era activ).
+   - Setat Serial.setTxTimeoutMs(0) in CAT_Dial.ino pentru a garanta scriere asincrona non-blocanta chiar si la deconectarea/re-enumerarea USB.
+   - Adaugat debounce la eliberarea butonului la trezirea din Light Sleep inainte de restart in power_manager.cpp.
+
+[0.4.6] - 2026-11-18
+--------------------------------------------------------------------------------
+MODUL DEDICAT DIAL_UPDATE, CORECTIE FRAMING CI-V & MODULARIZARE DRIVERE:
+1. Modul dedicat dial_update (dial_update.h / dial_update.cpp):
+   - Responsabilitate strict delimitata de Boot Discovery (interogare initiala si reconciliere stare la pornire, fara bucla de polling periodic activ).
+   - Colectare si validare parametrii cu masca binara TrxParamId (markParamReceived / isParamReceived): eliminare presupuneri sau valori dummy reziduale.
+   - Definire valori sentinela explicite (DIAL_NIL_FREQ, DIAL_NIL_INT8, DIAL_NIL_UINT8, DIAL_NIL_INT32, DIAL_NIL_FLOAT) pentru orice parametru nesuportat sau fara raspuns din radio.
+   - Persistenta selectiva in NVS Flash (Preferences): doar parametrii descoperiti valid sunt scrisi in flash; intrarile NIL nu corup NVS-ul existent.
+   - Raport detaliat de Boot Discovery afisat pe consola de debug la finalul secventei.
+2. Corectie critica aliniere preambul CI-V in cat_serial.cpp:
+   - Rezolvata cauza fundamentala a esecului de receptie TRX -> DIAL pe IC-7100: transceiverul trimite adesea 3 sau mai multi octeti 0xFE de preambul de sincronizare. Anterior, al 3-lea octet 0xFE era tratat ca adresa destinatie, decalata intreaga rama si anula parsarea tuturor raspunsurilor.
+   - Noul algoritm de framing consuma orice numar de octeti 0xFE consecutivi, plasand intotdeauna adresa destinatie la frame[2], adresa emitator la frame[3] si codul comenzii la frame[4].
+3. Corelare directa a interogarii cu bibliotecile specifice modelelor (TransceiverCAT):
+   - Adaugata metoda virtuala queryInitialState(void (*pacing_cb)()) in clasa de baza TransceiverCAT.
+   - IC7100 (ic7100.cpp): interogheaza selectiv doar comenzile suportate de model (IC-703 exclude comenzile pentru compresor digital si DSP pe care nu le poseda).
+   - TX500MP (tx500mp.cpp) si TS2000 (ts2000.cpp): comenzi ASCII native specifice fiecarui transceiver.
+4. Corectie eroare compilare input_controller.cpp:
+   - Declarat adjust_clarifier_offset(int32_t delta) in ui_views.h si implementat in ui_views.cpp, rezolvand eroarea 'adjust_clarifier_offset was not declared in this scope'.
+INTEGRARE CAT HARDWARE & RECONCILIERE INCHISA BIDIRECTIONALA (ETAPA 6):
+1. Sincronizare la pornire & Reconciliere completa din TRX (Closed-Loop Sync):
+   - Interogare la boot a tuturor celor 20 de parametri din radio: VFO Activ (0x07), Frecventa VFO Selectat (0x03), Frecventa VFO Nesolicitat (0x25 0x01), Mod si Filtru (0x04), Audio Gain (0x14 0x01), RF Gain (0x14 0x02), RF Power (0x14 0x0A), Mic Gain (0x14 0x0B), Atenuator (0x11), Preamplificator (0x16 0x02), AGC Speed (0x16 0x12), Noise Blanker (0x16 0x22), Noise Reduction (0x16 0x40), Notch Filter (0x16 0x41), Compressor (0x16 0x44), Compressor Level (0x14 0x0E), Split Mode (0x0F), RIT State (0x21 0x00), RIT Offset (0x21 0x01), Model ID (0x19 0x00).
+   - Corectie factor scalare RF Power pe IC-7100: tratare wați intregi (0..100W) conform profilului radio cand powerHasDecimal este false.
+   - Corectie RF Gain pe IC-7100: mapare procentuala directa 0..100% (0..255 CI-V), eliminare mapare -50..+5 dB de la TX-500MP.
+   - Corectie Speech Compressor pe IC-7100: interval configurat corect la 1..10 in TRX_PROFILE_IC7100.
+   - Corectie scalare Speech Compressor pe IC-7100: comanda CI-V 0x14 0x0E escala valoarea prin impartire la 100 in loc de 10 (astfel la nivelul 10 pe Dial se trimitea valoarea 25 = nivelul 1 pe TRX). Corectat la scara 1..10 (nivel 10 -> 255 = 10 pe TRX) atat la transmisie cat si la receptie cu rotunjire exacta.
+   - Sincronizare tranzactionala secventiala la boot (Query & Wait-Read): implementat execute_query_step cu apel activ de cat_poll() pe durata pacing-ului de 35ms intre interogari, eliminat apelul duplicat din cat_init(), prevenit coliziunile pe magistrala half-duplex 1-wire si overflow-ul bufferului UART. Adaugata interogarea periodica de frecventa si VFO in round-robin pe ecranul principal.
+   - Rezolvat bug spam infinit pe Serial USB: initializare m_compLevel la 5 (in loc de 50) si clamp explicit in cat_manager.cpp la limitele transceiverului (1..10) pentru a preveni buclarea repetitiva a reconcilierii.
+   - Reconciliere VFO A / VFO B activa bidirectionala: detectie comutare A/B din TRX si actualizare instanta a UI-ului Dial.
+   - Reconciliere frecvente VFO A si VFO B din receptie nesolicitata si query 0x25 0x01 fara retransmitere (eliminare ecou update_frequency_display(false)).
+   - Refresh automat la gestul de swipe orizontal (navigate_screen) pe orice ecran operational din carusel.
+2. Pacing & Temporizare Splash Screen dupa Reconciliere:
+   - Configurare in setup.h a constantei CAT_QUERY_PACING_MS (30 ms) pentru pauza hardware intre interogari pe magistrala 1-wire half-duplex.
+   - Configurare in setup.h a constantei SPLASH_SCREEN_POST_SYNC_MS (1500 ms): splash-ul ruleaza interogarea la boot si mentine ecranul 1.5s dupa sincronizarea completa, oferind un ecran Frequency gata sincronizat din prima milisecunda.
+3. Mecanism Generic de Polling Periodic Contextual & Round-Robin:
+   - Polling contextual pe ecranul activ (Audio Gain, RF Gain, RF Power, Mic Gain, Speech Comp) si Round-Robin in fundal pentru filtre/functii (CAT_POLL_INTERVAL_MS = 1000 ms).
+   - Prioritate absoluta pentru encoderul rotativ: pauza de 300 ms (CAT_ENCODER_PRIORITY_MS) pe interogarile de fundal cand utilizatorul roteste butonul Dial, asigurand latenta zero la acord.
+   - Arhitectura OOP extensibila polimorfic prin metodele virtuale din TransceiverCAT.
+4. Adrese CI-V automate:
+   - Mapare automata CI-V la selectarea transceiverului: IC-7100 (0x88), IC-7000 (0x70), IC-703 (0x6A).
+5. Modul centralizat CAT hardware (cat_manager.h / cat_manager.cpp):
+   - Mapare HardwareSerial1 pe Port B al M5Stack Dial (G1=RX GPIO 1, G2=TX GPIO 2).
+   - Activare suport protocol CI-V 1-wire half-duplex cu filtrare curata bazata pe adrese CI-V (ignorare ecou local 0xE0, procesare date radio 0x88 / broadcast 0x00).
+   - Initializare driver ICOM IC-7100 (ic7100.h / .cpp) la 19200 bps si adresa CI-V 0x88.
+   - Eliminare totala comenzi MOCK: toate comenzile UI trimit comenzi CAT fizice.
+   - Corectie RIT/XIT: ordine octeti BCD in CI-V 0x21 0x01 (semn +/- pe octetul 3).
+   - Eliminare blocaj USB CDC: sters DBG_FLUSH() de pe gestul de swipe orizontal.
+6. Corectie navigare buton fizic:
+   - Iesirea din setup_menu necesita apasare continua de 5 secunde cu bipuri de cadenta (1s, 2s, 3s, 4s), simetrica cu intrarea in meniu.
+7. Refactorizare Modulara Extrema & Extragere Functii Externe:
+   - Extragere ui_navigation.h / ui_navigation.cpp: carusel ecrane operationale, comutare meniuri, tranzitii de grup si callback-uri Power Off.
+   - Extragere input_controller.h / input_controller.cpp: gestiune completa a intrarilor fizice (buton cu cadenta 1s/5s, encoder rotativ, gesturi swipe si atingeri tactile lungi/scurte, stabilizare rollere setup).
+   - Extragere display_hal.h / display_hal.cpp: puntea de nivel scazut Display & Touch LVGL 9 (driver SPI, swap RGB565, tick si pointer).
+   - Reducerea masiva a CAT_Dial.ino de la 1402 linii la 282 linii (eliminat peste 1120 linii de logica secundara), transformat intr-un orchestrator pur de sistem.
+
+--------------------------------------------------------------------------------
+
+[0.4.5] - 2026-11-17
+--------------------------------------------------------------------------------
+REFACTORIZARE MODULARA (ETAPA 5):
+1. Extragere strat de prezentare si vizualizare LVGL (ui_views.h / .cpp):
+   - Centralizare formatare si actualizare ecrane: Frecventa, arcul celor 8 LED-uri decadice, Dual VFO A/B si moduri modulatie.
+   - Decuplare vederi controale transceiver: Audio Gain, RF Gain (dB), Putere TX RF (zecimi W), Front-End ATT/PRE, Filtre IF, Mic Gain, Compresor voce.
+   - Vederi DSP si parametri receptie: Notch Filter, AGC Button si pagini AGC SLOW/MID/FAST, Noise Blanker, Noise Reduction, sincronizare meniu functii.
+   - Vederi Setup: Backlight slider & hardware brightness, Beep volume slider & hardware buzzer, status conexiune CAT Serial/BT, roller modele transceiver si baudrate, roller dispozitive BLE.
+   - Rutine de scanare continua frecventa: start_scan() / stop_scan() si sincronizare butoane +/-.
+   - Reducerea masiva a CAT_Dial.ino de la 2574 linii la 1499 linii (eliminare peste 1070 linii de logica pura de prezentare).
+
+--------------------------------------------------------------------------------
+
+[0.4.4] - 2026-11-17
+--------------------------------------------------------------------------------
+REFACTORIZARE MODULARA (ETAPA 4):
+1. Extragere subsistem Bluetooth Low Energy (ble_controller.h / .cpp):
+   - Centralizare scanare asincrona BLE cu durata configurabila (BT_SCAN_DURATION_S).
+   - Structura ScannedBtDevice si tabela de dispozitive descoperite ordonata descrescator dupa RSSI.
+   - Callback MyAdvertisedDeviceCallbacks si flag automat de notificare lista (ble_is_list_dirty()).
+   - Conexiune client BLE (ble_connect, ble_disconnect, ble_is_connected) si rutine de asociere cu PIN.
+   - Persistenta in flash NVS pentru ultimul dispozitiv asociat (ble_load_nvs_settings, ble_save_device_to_nvs).
+   - Rutina de background ble_tick() pentru gestionarea autonoma a timeout-ului de scanare.
+   - Eliminarea includerilor BLE brute si a peste 120 de linii de cod din CAT_Dial.ino.
+
+--------------------------------------------------------------------------------
+
+[0.4.3] - 2026-11-17
+--------------------------------------------------------------------------------
+REFACTORIZARE MODULARA (ETAPA 3):
+1. Extragere subsistem stare radio si persistenta Flash NVS (radio_state.h / .cpp):
+   - Centralizare Dual VFO (VFO A / VFO B), frecvente active, pas decade (1 Hz - 10 MHz).
+   - Gestiune moduri de modulatie (LSB, USB, CW, AM, FM, DIG) si coduri CAT aferente.
+   - Decuplare RIT / XIT Clarifier (offset-uri independente per VFO, functii helper).
+   - Niveluri de operare: Audio Gain, RF Gain (dB), Putere TX RF (zecimi de Watt), Mic Gain, Speech Compressor, Front-End mode (ATT/PRE/Normal).
+   - Parametri DSP: AGC Slow/Mid/Fast per mod, Noise Blanker, Noise Reduction, Notch Filter, IF Filter bandwidths.
+   - Selectie model transceiver (TX-500MP, TS-2000, IC-703, IC-7100, IC-7000) si rezolutie capabilitati (get_active_trx_caps()).
+   - Persistenta flash NVS completa (load_nvs_settings(), save_nvs_settings_now()) si temporizator auto-commit (check_nvs_auto_commit()).
+
+--------------------------------------------------------------------------------
+
+[0.4.2] - 2026-11-17
+--------------------------------------------------------------------------------
+REFACTORIZARE MODULARA (ETAPA 2):
+1. Extragere subsistem de oprire si control al alimentarii (power_manager.h / .cpp):
+   - Detecția burst-ului de 5 apăsări rapide pe butonul fizic (`power_manager_check_burst_click()`).
+   - Gestiunea stării paginii de oprire și a numărătorii inverse de 5 secunde (`power_manager_enter()`, `power_manager_tick()`).
+   - Avertizări acustice automate pe durata ultimelor 3 secunde.
+   - Deconectare hardware prin pinul HOLD (`GPIO 46`) pentru consum 0 uA pe baterie și intrare în Light Sleep cu trezire la click pe USB (`GPIO 42`).
+   - Decuplare curată de schița principală prin mecanism de callback-uri (`on_power_off_cancelled`, `on_power_off_cleanup`).
+   - Reducerea complexității în `handle_physical_button_short_press()` și `loop()`.
+
+--------------------------------------------------------------------------------
+
+[0.4.1] - 2026-11-17
+--------------------------------------------------------------------------------
+REFACTORIZARE MODULARA (ETAPA 1):
+1. Extragere subsistem de sunet (sound_fx.h / .cpp):
+   - Centralizare apeluri sonore: `sound_beep_touch()`, `sound_beep_confirm()`, `sound_beep_error()`, `sound_click_encoder()`.
+2. Extragere driver hardware encoder rotativ (encoder_driver.h / .cpp):
+   - Pinii hardware, tabela de cuadratură Gray-code, divisorul de detente și calculul balisticii/accelerației dinamice.
+   - Rutină simplificată de inițializare (`encoder_init()`) și citire curată a detentelor în `loop()` (`encoder_read_detents()`).
+
+--------------------------------------------------------------------------------
+
+[0.3.0] - 2026-11-16
+--------------------------------------------------------------------------------
+ADAUGAT & IMBUNATATIT:
+1. Implementare subsistem complet de oprire alimentare (Power Off):
+   - Declansare prin succesiune de 5 apasari scurte rapide (burst) pe butonul fizic
+     central in oricare dintre ecranele de operare ale carousel-ului.
+   - Parametrizare dedicata in `setup.h`:
+     * `POWER_OFF_MULTI_CLICK_COUNT` (default: 5 apasari)
+     * `POWER_OFF_MULTI_CLICK_GAP_MS` (default: 500 ms fereastra intre apasari)
+     * `POWER_OFF_COUNTDOWN_SEC` (default: 5 secunde durata numaratoare inversa).
+   - Tranzitie animata in ecranul dedicat `power_off_page`.
+   - Contor invers afisat in timp real pe eticheta `p_off_count_down_label` (5, 4, 3, 2, 1).
+   - Semnalizare sonora de atentie pe durata ultimelor 3 secunde ale contorului (3, 2, 1).
+   - La atingerea butonului touch `power_off_button`:
+     * Salvare imediata a starii complete in flash NVS (`save_nvs_settings_now()`).
+     * Deconectare si oprire stiva BLE / CAT.
+     * Stingere backlight si trimitere display in sleep (`M5.Display.sleep()`).
+     * Taiere hardware a alimentarii bateriei via pinul HOLD (M5.Power.powerOff()).
+     * Daca este prezenta alimentare prin cablu USB (unde HOLD nu poate taia linia de 3.3V),
+       sistemul trece in Light Sleep cu trezire pe GPIO 42 (nivel LOW) urmata de restart complet
+       (esp_restart()), asigurand trezirea identica atat pe baterie cat si pe USB.
+   - La expirarea timpului fara atingerea butonului, sistemul anuleaza oprirea si revine
+     automat pe ecranul de operare de unde s-a plecat.
+   - Compatibilitate arhitecturala: click-ul scurt pe butonul fizic ramane complet
+     disponibil pentru alocari viitoare de functii, putand coexista prin temporizator
+     de decizie (single-click vs. multi-click burst).
+   - Actualizare dinamica a etichetei de versiune firmware (`fw_ver_nr_label`) de pe ecranul de splash direct din macro-ul `FW_VERSION` (sursa unica de adevar).
+
+--------------------------------------------------------------------------------
+
+[0.2.0] - 2026-11-15
+--------------------------------------------------------------------------------
+ADAUGAT & IMBUNATATIT:
+1. Gestiune benzi radioamatori si limite de frecventa (band_limits.h):
+   - Creat modulul dedicat `band_limits.h` pentru decuplarea limitelor de banda
+     de codul principal.
+   - Definire completa a celor 11 benzi IARU Regiunea 1 (160m, 80m, 60m, 40m,
+     30m, 20m, 17m, 15m, 12m, 10m, 6m).
+   - Inclusa banda de 60m (5.3515 MHz - 5.3665 MHz) conform deciziilor WRC-15.
+   - Definire frecvente implicite de apel (mid-band default) pentru fiecare banda.
+   - Definire mod de lucru implicit (modulatie default) per banda:
+     * LSB pentru benzile sub 10 MHz (160m, 80m, 40m).
+     * USB pentru 60m (cerinta stricta WRC-15) si benzile >= 10 MHz (30m, 20m,
+       17m, 15m, 12m, 10m, 6m).
+   - Configurare mod operare in setup:
+     * BAND_MODE_STRICT_HAM (1 = doar benzi amatori, 0 = general coverage 0-55 MHz).
+     * BAND_LIMIT_BEHAVIOR_WRAP (1 = wrap-around la margini, 0 = stop/clamp).
+   - Butoanele touch/ecran B-UP si B-DN comuta ciclic prin benzi, pozitioneaza
+     frecventa pe default-ul benzii si comuta automat modulatia pe LSB sau USB.
+
+2. Arhitectura profilata per transceiver (transceiver_cat.h, tx500mp, ts2000, ic7100):
+   - Decuplarea parametrilor hardware ai modelelor de statii in structuri de capabilitati
+     (`struct TrxCapabilities`) accesibile prin `getCapabilities()`.
+   - Profilare TX RF Power:
+     * Modele 100W (Kenwood TS-2000, Icom IC-7100, IC-7000): interval 0..100W,
+       pas 1W, afisare ca intreg ("%d") fara punct zecimal in eticheta.
+     * Modele 10W (Lab599 TX-500MP, Icom IC-703): interval 0.5..10.0W, pas 0.5W/0.1W,
+       afisare cu zecimala ("%.1f").
+   - Profilare RF Gain:
+     * Modele ICOM (IC-703, IC-7100, IC-7000): interval -100 .. 0, pas 5, eticheta "db"
+       este automat ascunsa/inactivata.
+     * Modele Lab599 TX-500MP si Kenwood TS-2000: interval -50 .. +5 dB, pas 1 dB,
+       eticheta "db" este activa.
+   - Profilare Filtre IF (selectie ciclica per model):
+     * TX-500MP: 4 filtre ("NAR", "MID1", "MID2", "WIDE").
+     * IC-703: 2 filtre ("NAR", "WIDE").
+     * TS-2000, IC-7100, IC-7000: 3 filtre ("NAR", "MID", "WIDE").
+   - Profilare Speech Compressor & Mic Gain:
+     * TX-500MP: nivel compresor 1 .. 10 (pas 1).
+     * TS-2000, Icom: nivel compresor 0 .. 100 (pas 2).
+     * Arc-urile grafice si rotirea encoderului se scaleaza automat in functie de profil.
+   - Functie unificata de sincronizare UI (`apply_trx_profile_ui`):
+     * Reconfigureaza dinamic limitele arc-urilor LVGL, clamp-ul valorilor curente
+       si vizibilitatea etichetelor la boot si la schimbarea statiei din meniul Setup.
+
+3. Corectare navigare si iesire ierarhica din subpaginile de Setup (CAT_Dial.ino):
+   - Eliminata coliziunea de valori din `enum SetupScreenType` unde `SETUP_SCREEN_TRANSCEIVER`
+     avea aceeasi valoare numerica (2) cu `SETUP_SCREEN_BLUETOOTH_PIN`. Acest bug determina
+     ca la click lung pe butonul fizic in `transceiver_selection` iesirea sa se faca eronat
+     in `bluetooth_menu`.
+   - Implementat handler complet de iesire ierarhica pe click lung (Long Press > 1000ms)
+     in toate subpaginile meniului Setup (Transceiver, Baudrate, Backlight, Beep Volume)
+     cu salvarea/aplicarea modificarilor si revenirea in `setup_menu`.
+   - Adaugat semnal acustic de confirmare la atingerea pragului de 1000ms pentru iesirea
+     din oricare subpagina de meniu sau setup.
+
+--------------------------------------------------------------------------------
+
+[0.1.0] - 2026-11-12
+--------------------------------------------------------------------------------
+LANSARE INITIALA:
+- Implementare firmware de baza pentru M5Stack Dial (ESP32-S3, ecran rotund 240x240,
+  encoder rotativ fizic cu detente si buton central).
+- Interfata grafica dezvoltata pe LVGL 9 (EEZ Studio UI portat).
+- VFO A / VFO B independent, Clarifier (RIT/XIT) cu editare offset Hz.
+- Carousel tactil cu 6 ecrane de operare: Frecventa, Castig Audio, Castig RF,
+  Putere RF Emisie, Castig Microfon, Compresor Vorbire.
+- Submeniuri dedicate pentru setari DSP (AGC Slow/Mid/Fast per mod, Noise Blanker,
+  Noise Reduction) si setari sistem (selectie transceiver, baud rate CAT,
+  luminozitate ecran, volum buzzer, scanare dispozitive Bluetooth BLE).
+- Persistenta setarilor in memoria non-volatila NVS (Preferences).
+================================================================================
